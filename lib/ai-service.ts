@@ -24,71 +24,161 @@ export const ALLOWED_MODELS = {
 
 export type ModelId = keyof typeof ALLOWED_MODELS;
 
-export async function generatePost(topic: string, model: ModelId = 'llama-3.3-70b-versatile') {
-    let researchContext = '';
 
-    // Validate model
-    const selectedModel = Object.keys(ALLOWED_MODELS).includes(model) ? model : 'llama-3.3-70b-versatile';
 
-    // A. Research Layer (Tavily)
-    try {
-        const tvly = getTavilyClient();
-        const searchResult = await tvly.search(topic, {
-            searchMode: 'news', // or 'general'
-            maxResults: 3,
-        });
+// Helper for model selection
+const getModel = (modelId?: string, defaultModel = 'llama-3.3-70b-versatile') => {
+    return Object.keys(ALLOWED_MODELS).includes(modelId || '') ? modelId : defaultModel;
+}
 
-        // Extract snippets for context
-        const snippets = searchResult.results.map((res: any) => `title: ${res.title}\ncontent: ${res.content}`).join('\n\n');
-        if (snippets) {
-            researchContext = `RESEARCH CONTEXT:\n${snippets}\n\n`;
-        }
-    } catch (error) {
-        console.error('Tavily search failed or skipped, proceeding without context:', error);
-        // Proceed without research if it fails
-    }
-
-    // B. System Prompt Construction
-    const systemPrompt = `
-You are a WORLD-CLASS VIRAL LINKEDIN GHOSTWRITER.
-Your goal is to write a high-engagement LinkedIn post about the user's topic.
-
-RULES:
-1. **Strong Hook**: The first line must grab attention immediately. Use a controversial statement, a surprising fact, or a strong question.
-2. **Short Paragraphs**: Use 1-2 sentences per paragraph max. White space is key for readability.
-3. **Tone**: Professional yet conversational. Authentic, not robotic.
-4. **Emojis**: Use 1-2 distinct emojis to add flavor, but DO NOT overdo it.
-5. **No Hashtags in Body**: Absolutely NO hashtags in the main text.
-6. **Trending Format**: Use bullet points or numbered lists if explaining steps or insights.
-
-STRUCTURE:
-- Hook
-- Value proposition / Insight (What did I learn?)
-- Actionable advice
-- Engagement question at the end
-- (Double Line Break)
-- Hashtags (at the very bottom)
-
-${researchContext}
-  `.trim();
-
-    // C. Generation Layer (Groq)
+// 1. Generate Topics (Brainstorming)
+export async function generateTopics(input: string) {
     const groq = getGroqClient();
+    const prompt = `
+    Generate 6 short, catchy, and viral LinkedIn topic titles based on this idea: "${input}".
+    Return ONLY a JSON array of strings. No markdown, no silence. 
+    Example: ["The Future of AI", "Why Remote Work fails"]
+    `;
+
     const completion = await groq.chat.completions.create({
-        messages: [
-            {
-                role: 'system',
-                content: systemPrompt,
-            },
-            {
-                role: 'user',
-                content: `Topic: ${topic}`,
-            },
-        ],
-        model: selectedModel,
-        temperature: 0.7, // Creativity balance
-        max_tokens: 1024,
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.1-8b-instant', // Fast model
+        temperature: 0.7,
     });
 
-    return completion.choices[0]?.message?.content || 'Failed to generate content.';
+    try {
+        const content = completion.choices[0]?.message?.content || '[]';
+        // Clean markdown code blocks if any
+        const CLEAN_JSON = content.replace(/```json|```/g, '').trim();
+        return JSON.parse(CLEAN_JSON);
+    } catch (e) {
+        console.error("Failed to parse topics", e);
+        return [];
+    }
+}
+
+// 2. Generate Hooks (Commitment)
+export async function generateHooks(topic: string) {
+    const groq = getGroqClient();
+    const prompt = `
+    You are a viral LinkedIn Ghostwriter.
+    Write 3 distinct, high-engagement "Hooks" (opening lines) for a post about: "${topic}".
+    Styles:
+    1. Controversial
+    2. Storytelling
+    3. Analogy
+    
+    Return ONLY a JSON array of strings.
+    `;
+
+    const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.3-70b-versatile', // Smart model
+        temperature: 0.8,
+    });
+
+    try {
+        const content = completion.choices[0]?.message?.content || '[]';
+        const CLEAN_JSON = content.replace(/```json|```/g, '').trim();
+        return JSON.parse(CLEAN_JSON);
+    } catch (e) {
+        return ["Hook 1 failed", "Hook 2 failed", "Hook 3 failed"];
+    }
+}
+
+// Load Viral Data
+import viralPosts from '@/data/viral_posts.json';
+
+// Helper: Get Random Viral Posts for Context
+const getViralContext = (count = 2) => {
+    // In a real app, we would use Vector Search here (Milestone 5)
+    // For now, random selection is sufficient for style mimicry
+    const shuffled = [...viralPosts].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
+};
+
+// 3. Generate Body (The Meat)
+export async function generateBody(hook: string, topic: string) {
+    const groq = getGroqClient();
+
+    // A. Research Layer (Content)
+    let researchContext = '';
+    try {
+        const tvly = getTavilyClient();
+        const search = await tvly.search(topic, { maxResults: 2 });
+        researchContext = search.results.map((r: any) => `- ${r.title}: ${r.content}`).join('\n');
+    } catch (e) { console.log('Research failed', e); }
+
+    // B. Style Layer (Viral Engine RAG)
+    const viralExamples = getViralContext(2).map((post, i) =>
+        `[Example ${i + 1} - Style Reference]\n${post.body}`
+    ).join('\n\n');
+
+    const prompt = `
+    Write the MAIN BODY for a LinkedIn post using this Hook: "${hook}".
+    Topic: "${topic}".
+
+    CONTEXT from Web Research (Use these facts):
+    ${researchContext}
+
+    STYLE REFERENCES (Mimic the sentence length, spacing, and tone of these):
+    ${viralExamples}
+
+    INSTRUCTIONS:
+    - Write 2 different versions (Option A and Option B).
+    - Mimic the "Viral" style: Short sentences. One line per paragraph. 
+    - No big walls of text.
+    - Use 1-2 emojis max.
+    
+    IMPORTANT: Return ONLY valid JSON.
+    Format: { "optionA": "text...", "optionB": "text..." }
+    `;
+
+    const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.3-70b-versatile',
+        response_format: { type: "json_object" }
+    });
+
+    try {
+        const content = completion.choices[0]?.message?.content || '{}';
+        return JSON.parse(content);
+    } catch (e) {
+        console.error("Body generation error:", e);
+        return { optionA: "Generation failed.", optionB: "Gen failed." };
+    }
+}
+
+// 4. Generate Final Polish (CTA + Hashtags + Assembly)
+export async function generateFinal(hook: string, body: string, topic: string) {
+    const groq = getGroqClient();
+    const prompt = `
+    You are assembling the final LinkedIn post.
+    
+    Context:
+    - Topic: "${topic}"
+    - Hook: "${hook}"
+    - Body: "${body}"
+
+    Task:
+    1. Generate a strong Call To Action (CTA) relevant to the body.
+    2. Generate 5 relevant hashtags.
+    3. Assemble the FINAL COMPLETE POST by combining: Hook + \n\n + Body + \n\n + CTA + \n\n + Hashtags.
+
+    Return ONLY valid JSON.
+    Format: { "finalPost": "full string here...", "cta": "...", "hashtags": [...] }
+    `;
+
+    const completion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'llama-3.3-70b-versatile', // Use smart model for assembly 
+        response_format: { type: "json_object" }
+    });
+
+    try {
+        const content = completion.choices[0]?.message?.content || '{}';
+        return JSON.parse(content);
+    } catch (e) {
+        return { finalPost: `${hook}\n\n${body}`, cta: "", hashtags: [] };
+    }
 }

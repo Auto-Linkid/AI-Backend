@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { generatePost } from '@/lib/ai-service';
+import { generateTopics, generateHooks, generateBody, generateFinal } from '@/lib/ai-service';
 
 export const runtime = 'nodejs'; // Force Node.js runtime for Tavily/Groq SDK compatibility if needed
 
@@ -19,35 +19,47 @@ export async function OPTIONS() {
 
 export async function POST(req: Request) {
     try {
-        let body;
-        try {
-            body = await req.json();
-        } catch (e) {
-            return NextResponse.json(
-                { error: 'Invalid JSON body. Please ensure you are sending a JSON object with a "topic" field.' },
-                { status: 400, headers: corsHeaders() }
-            );
+        const body = await req.json();
+        const { step, input, context } = body;
+
+        let result;
+
+        switch (step) {
+            case 'topics':
+                // input = user idea
+                result = await generateTopics(input);
+                break;
+            case 'hooks':
+                // input = selected topic
+                result = await generateHooks(input);
+                break;
+            case 'body':
+                // input = selected hook, context = topic
+                if (!context) throw new Error("Context (topic) required for body generation");
+                result = await generateBody(input, context);
+                break;
+            case 'final':
+                // input = selected body, context = topic, hook = from frontend
+                const { hook } = body;
+                if (!context || !hook) throw new Error("Context (topic) and Hook required for final assembly");
+                result = await generateFinal(hook, input, context);
+                break;
+            default:
+                return NextResponse.json(
+                    { error: 'Invalid step. Available: topics, hooks, body, final' },
+                    { status: 400, headers: corsHeaders() }
+                );
         }
-
-        const { topic, model } = body;
-
-        if (!topic) {
-            return NextResponse.json(
-                { error: 'Topic is required' },
-                { status: 400, headers: corsHeaders() }
-            );
-        }
-
-        const postContent = await generatePost(topic, model);
 
         return NextResponse.json(
-            { result: postContent },
+            { result },
             { status: 200, headers: corsHeaders() }
         );
-    } catch (error) {
+
+    } catch (error: any) {
         console.error('API Error:', error);
         return NextResponse.json(
-            { error: 'Internal Server Error' },
+            { error: error.message || 'Internal Server Error' },
             { status: 500, headers: corsHeaders() }
         );
     }

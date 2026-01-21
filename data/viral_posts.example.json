@@ -1,0 +1,12 @@
+[
+    {
+        "category": "Example",
+        "hook": "This is an example hook.",
+        "body": "This is an example body text to prevent the app from crashing if the real data is missing.\n\nIt mimics the structure but contains no copyrighted material.",
+        "cta": "Check the real data.",
+        "metrics": {
+            "likes": 100,
+            "comments": 10
+        }
+    }
+]
