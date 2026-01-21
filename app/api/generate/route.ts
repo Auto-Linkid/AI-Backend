@@ -31,18 +31,20 @@ export async function POST(req: Request) {
                 break;
             case 'hooks':
                 // input = selected topic
-                result = await generateHooks(input);
+                const { intent } = body;
+                result = await generateHooks(input, intent);
                 break;
             case 'body':
                 // input = selected hook, context = topic
+                const { intent: bodyIntent, length } = body;
                 if (!context) throw new Error("Context (topic) required for body generation");
-                result = await generateBody(input, context);
+                result = await generateBody(input, context, bodyIntent, length);
                 break;
             case 'final':
                 // input = selected body, context = topic, hook = from frontend
-                const { hook } = body;
+                const { hook, ctaType } = body; // ctaType optional
                 if (!context || !hook) throw new Error("Context (topic) and Hook required for final assembly");
-                result = await generateFinal(hook, input, context);
+                result = await generateFinal(hook, input, context, ctaType);
                 break;
             default:
                 return NextResponse.json(
