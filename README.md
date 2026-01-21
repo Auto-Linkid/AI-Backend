@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🚀 Hacks Base Indonesia - AI Generator Service
 
-## Getting Started
+A production-ready Backend AI Service designed to generate viral LinkedIn content.
+Built with **Next.js 14**, **Groq AI**, and **Tavily Research**, featuring a seamless **x402 Protocol** payment simulation.
 
-First, run the development server:
+## 🌟 Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Viral Ghostwriter Engine**: Generates high-engagement LinkedIn posts using `llama-3.3-70b`.
+- **Real-Time Research**: Integrates **Tavily** to fetch live news and data, preventing AI hallucinations.
+- **Model Selection**: Choose between High Quality (70B) or High Speed (8B) models.
+- **Public API**: Exposed via Cloudflare Tunnel for secure, easy access.
+- **CORS Enabled**: Ready for integration with any Frontend (React, Vue, etc.) or x402 Payment Processor.
+
+## 🛠️ Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **Language**: TypeScript
+- **AI Inference**: Groq SDK (`llama-3.3-70b-versatile`, `llama-3.1-8b-instant`)
+- **Web Research**: Tavily API
+
+---
+
+## 🔌 API Documentation
+
+**Base Endpoint**: `https://proto-hackathon-base.tempegoreng.my.id/api/generate`
+**Method**: `POST`
+
+### 1. Request Format
+
+Send a JSON body to the endpoint.
+
+#### **Option A: Smartest Quality (Default)**
+Best for "Pro/Premium" users. Uses `llama-3.3-70b` + Deep Research.
+```json
+{
+  "topic": "The Future of AI Agents"
+}
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+#### **Option B: Fastest Speed (Cost Efficient)**
+Best for "Basic" tier or testing. Uses `llama-3.1-8b`.
+```json
+{
+  "topic": "Quick Monday Motivation",
+  "model": "llama-3.1-8b-instant"
+}
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `topic` | `string` | **Yes** | The user's input/prompt. |
+| `model` | `string` | No | `llama-3.3-70b-versatile` (default) or `llama-3.1-8b-instant`. |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 2. Response Format
 
-## Learn More
+Returns a JSON object with the generated content.
 
-To learn more about Next.js, take a look at the following resources:
+```json
+{
+  "result": "🚀 AI Agents are taking over...\n\nHere is why you should care:\n\n1. It saves time.\n2. It scales effort.\n\n#AI #Tech"
+}
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> **Note**: The `result` string contains `\n` for line breaks. In your frontend, render this using CSS `white-space: pre-wrap;` to preserve formatting.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 3. Error Handling
 
-## Deploy on Vercel
+- **400 Bad Request**: Missing `topic` or invalid JSON.
+- **500 Internal Server Error**: API Key issues or AI provider downtime.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🚀 Getting Started (Local Development)
+
+Follow these steps to run the backend on your machine.
+
+### Prerequisites
+- Node.js 18+ installed.
+- API Keys for **Groq** and **Tavily**.
+
+### Installation
+
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/Auto-Linkid/AI-Backend.git
+    cd AI-Backend
+    ```
+
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+
+3.  **Configure Environment**:
+    Rename `.env.local.example` to `.env.local` and add your keys:
+    ```env
+    GROQ_API_KEY=gsk_...
+    TAVILY_API_KEY=tvly-...
+    ```
+
+4.  **Run the Server**:
+    ```bash
+    npm run dev
+    ```
+    The server will start at `http://localhost:3000`.
+
+5.  **Test the API**:
+    You can use the included test script:
+    ```bash
+    node scripts/test-api.js
+    ```
+
+## 📄 License
+Private Repository for Hacks Base Indonesia.
