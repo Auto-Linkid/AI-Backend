@@ -1,5 +1,14 @@
-# 🚀 Hacks Base Indonesia - AI Generator Service
+# 🚀 Hacks Base
 
+## Frontend Repository
+**The UI has been moved to a separate repository:**
+[Auto-Linkid/Frontend](https://github.com/Auto-Linkid/Frontend)
+
+This repository now serves as a **Pure API Backend**.
+
+---
+
+## 🎯 Project Overview
 A production-ready Backend AI Service designed to generate viral LinkedIn content.
 Built with **Next.js 14**, **Groq AI**, and **Tavily Research**, featuring a seamless **x402 Protocol** payment simulation.
 

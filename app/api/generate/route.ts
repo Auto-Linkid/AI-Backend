@@ -36,9 +36,9 @@ export async function POST(req: Request) {
                 break;
             case 'body':
                 // input = selected hook, context = topic
-                const { intent: bodyIntent, length } = body;
+                const { intent: bodyIntent, length, tone, emojiLevel, language } = body;  // NEW: language
                 if (!context) throw new Error("Context (topic) required for body generation");
-                result = await generateBody(input, context, bodyIntent, length);
+                result = await generateBody(input, context, bodyIntent, length, tone, emojiLevel, language);
                 break;
             case 'final':
                 // input = selected body, context = topic, hook = from frontend

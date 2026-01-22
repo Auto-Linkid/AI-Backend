@@ -15,7 +15,10 @@ export async function POST(request: NextRequest) {
             input,          // Topic or custom draft
             intent = 'viral',
             length = 'medium',
-            ctaType = 'value'
+            ctaType = 'value',
+            tone = 5,        // 0-10 slider
+            emojiLevel = 'moderate',  // none/minimal/moderate/rich
+            language = 'id'  // en/id
         } = body;
 
         if (!input) {
@@ -69,9 +72,9 @@ export async function POST(request: NextRequest) {
             selectedHook = hooks[0]; // Auto-select first hook
             console.log('✅ Auto-selected hook:', selectedHook.substring(0, 50));
 
-            // Step 3: Generate body
+            // Step 3: Generate body (with all params!)
             console.log('✍️ Generating body...');
-            const bodyOptions = await generateBody(selectedHook, topic, intent, length);
+            const bodyOptions = await generateBody(selectedHook, topic, intent, length, tone, emojiLevel, language);
             selectedBody = bodyOptions.optionA; // Auto-select option A
             console.log('✅ Auto-selected body (snippet):', selectedBody.substring(0, 100));
         }
