@@ -118,30 +118,40 @@ export async function generateCTA(body: string, intent: string): Promise<string[
     }
 }
 
-// 5. Polish (Final) - UPDATED FOR LINKEDIN COPY-PASTE
+// 5. Polish (Final) - UPDATED FOR LINKEDIN COPY-PASTE WITH CONSISTENT STRUCTURE
 export async function polishContent(content: string, tone: number, emojiDensity: number): Promise<string> {
-    const prompt = `Polish this LinkedIn post for maximum engagement and readability.
+    const prompt = `Polish this LinkedIn post following this EXACT structure for consistency:
 
 Original post:
 "${content}"
 
-Tone Level (1-10, 10 is formal): ${tone}
-Emoji Density (1-10): ${emojiDensity}
+STRUCTURE TO FOLLOW:
+1. Opening Hook (1-2 powerful sentences with ${emojiDensity > 5 ? '1-2' : '0-1'} emoji)
+2. Main Body (2-4 paragraphs, each 2-3 sentences, separated by blank lines)
+3. Call-to-Action (1-2 engaging sentences with ${emojiDensity > 5 ? '1' : '0-1'} emoji)
 
-CRITICAL INSTRUCTIONS:
-- Return PLAIN TEXT ONLY that can be directly copy-pasted to LinkedIn
-- Use standard emojis that work on all platforms (✅ 🚀 💡 🔥 etc.)
-- NO markdown formatting (no **, __, ##, etc.)
+TONE GUIDELINES:
+- Tone Level ${tone}/10 (1=casual/friendly, 10=formal/professional)
+- ${tone <= 3 ? 'Use conversational language, contractions, personal stories' : tone <= 6 ? 'Balance professional insights with relatable examples' : 'Maintain professional tone, industry terminology, authoritative voice'}
+
+EMOJI USAGE:
+- Emoji Density ${emojiDensity}/10
+- ${emojiDensity <= 3 ? 'Minimal emojis (0-2 total)' : emojiDensity <= 6 ? 'Moderate emojis (3-5 total)' : 'Liberal emoji use (6-8 total)'}
+- Use only standard emojis: ✅ 🚀 💡 🔥 ⚡ 💪 🎯 📈 👉 🤔 💬 📊 🌟
+
+CRITICAL FORMATTING RULES:
+- PLAIN TEXT ONLY - no markdown (no **, __, ##, etc.)
 - NO special characters that break on paste
-- Keep line breaks for readability
-- Make it engaging and viral-worthy
+- Use blank lines between paragraphs for readability
+- Keep sentences punchy and scannable
+- Make it viral-worthy and engagement-focused
 
-Return only the polished post text, nothing else.`;
+Return ONLY the polished post text, nothing else.`;
 
     const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: 'llama-3.3-70b-versatile',
-        temperature: 0.5,
+        temperature: 0.3, // Lower temperature for more consistent output
     });
     return completion.choices[0]?.message?.content || content;
 }
