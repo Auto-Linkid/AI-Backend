@@ -1,0 +1,107 @@
+import { Router, Request, Response } from 'express';
+import { ethers } from 'ethers';
+
+const router = Router();
+
+// Environment variables
+const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
+const PRIVATE_KEY = process.env.FACILITATOR_PRIVATE_KEY;
+const CONTRACT_ADDRESS = process.env.PAYMENT_CONTRACT_ADDRESS;
+
+if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
+    console.warn("⚠️  Missing Payment Config in .env");
+}
+
+// Contract ABI (Minimal)
+const ABI = [
+    "function verifyPaymentSignature(address user, uint256 tier, string contentId, uint256 nonce, uint256 deadline, bytes signature) view returns (bool, string)",
+    "function executePayment(address user, uint256 tier, string contentId, uint256 nonce, uint256 deadline, bytes signature) returns (bool)",
+    "function getTierPrice(uint256 tier) view returns (uint256)"
+];
+
+router.post('/api/payment', async (req: Request, res: Response) => {
+    try {
+        const { user, tier, contentId, nonce, deadline, signature } = req.body;
+
+        if (!user || !tier || !contentId || nonce === undefined || !deadline || !signature) {
+            return res.status(400).json({ success: false, error: 'Missing required fields' });
+        }
+
+        console.log(`[Payment] Processing for user ${user}, tier ${tier}`);
+
+        // Setup Ethers
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        const wallet = new ethers.Wallet(PRIVATE_KEY!, provider);
+        const contract = new ethers.Contract(CONTRACT_ADDRESS!, ABI, wallet);
+
+        // 1. Verify Signature (Read-only call to contract)
+        // This is crucial to check BEFORE paying gas for execution
+        try {
+            const [isValid, reason] = await contract.verifyPaymentSignature(
+                user,
+                tier,
+                contentId,
+                nonce,
+                deadline,
+                signature
+            );
+
+            if (!isValid) {
+                console.warn(`[Payment] Invalid Signature: ${reason}`);
+                return res.status(402).json({ success: false, error: reason });
+            }
+        } catch (err: any) {
+            // Handle revert or contract error during verification
+            console.error("[Payment] Verification Error:", err.message);
+            return res.status(500).json({ success: false, error: 'Contract verification failed' });
+        }
+
+        // 2. Execute Payment (On-chain Transaction)
+        console.log(`[Payment] Executing transaction...`);
+        let tx;
+        try {
+            tx = await contract.executePayment(
+                user,
+                tier,
+                contentId,
+                nonce,
+                deadline,
+                signature
+            );
+            console.log(`[Payment] Tx Sent: ${tx.hash}`);
+        } catch (err: any) {
+            console.error("[Payment] Execution Error:", err.message);
+            // Provide more specific error if possible
+            return res.status(500).json({ success: false, error: 'Transaction execution failed' });
+        }
+
+        // 3. Wait for Confirmation
+        const receipt = await tx.wait();
+        if (receipt.status !== 1) {
+            return res.status(500).json({ success: false, error: 'Transaction reverted' });
+        }
+        console.log(`[Payment] Tx Confirmed: ${receipt.hash}`);
+
+        // 4. Trigger AI Generation directly
+        // In a real app, this might be a separate event or queue
+        // For now, we return success and let the frontend call the AI endpoints, 
+        // OR we can generate here and return it.
+        // User requested: "Flow: Payment Success -> Get tier info -> Call AI Service -> Return result"
+
+        // Import dynamically to avoid circular deps if needed, or structured logic
+        const { generateTieredContent } = await import('../services/ai-service');
+        const aiResult = await generateTieredContent(tier, contentId); // We need to implement this
+
+        return res.json({
+            success: true,
+            txHash: receipt.hash,
+            result: aiResult
+        });
+
+    } catch (error: any) {
+        console.error('[Payment] Endpoint Error:', error);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+export default router;

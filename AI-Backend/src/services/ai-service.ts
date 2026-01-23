@@ -72,25 +72,30 @@ export async function generateHooks(topic: string, intent: string = 'viral'): Pr
 
 // 3. Generate Body (Array of variations)
 export async function generateBody(hook: string, context: string, intent: string, length: string): Promise<string[]> {
-    const prompt = `
-    Write 2 distinct LinkedIn post bodies for the hook: "${hook}" and context: "${context}".
-    Intent: ${intent}. Length: ${length}.
-    Return ONLY a valid JSON array of strings. Each string is a full body variation.
-    Example: ["Body Option 1...", "Body Option 2..."]
-    `;
+    const prompt = `Write 3 distinct LinkedIn post bodies for the hook: "${hook}" and context: "${context}".
+Intent: ${intent}. Length: ${length}.
+Return ONLY a valid JSON array of strings. Each string is a complete body variation.
+Example: ["Body Option 1...", "Body Option 2...", "Body Option 3..."]`;
 
     const completion = await groq.chat.completions.create({
         messages: [{ role: 'user', content: prompt }],
         model: 'llama-3.3-70b-versatile',
-        temperature: 0.7,
+        temperature: 0.8,
     });
 
     const content = completion.choices[0]?.message?.content || '[]';
+    console.log('[AI Body] Response preview:', content.substring(0, 100));
+
     try {
-        const parsed = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
-        if (Array.isArray(parsed)) return parsed;
+        const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(cleaned);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            console.log(`[AI Body] Parsed ${parsed.length} options`);
+            return parsed;
+        }
         return [content];
-    } catch {
+    } catch (error) {
+        console.error('[AI Body] Parse failed, returning raw content');
         return [content];
     }
 }
@@ -155,3 +160,70 @@ Return ONLY the polished post text, nothing else.`;
     });
     return completion.choices[0]?.message?.content || content;
 }
+
+// 6. Tiered Generation Orchestrator
+export async function generateTieredContent(tier: number, contentId: string): Promise<any> {
+    console.log(`[AI] Generating content for Tier ${tier} (ID: ${contentId})`);
+
+    // Default context
+    const input = "AI in Marketing"; // In real usage, this should come from DB or params
+    const intent = "educational";
+
+    try {
+        if (tier === 1) {
+            // BASIC: Simple Flow
+            const topics = await generateTopics(input);
+            const selectedTopic = topics[0];
+            const hooks = await generateHooks(selectedTopic, intent);
+            const selectedHook = hooks[0];
+            const bodies = await generateBody(selectedHook, selectedTopic, intent, "short");
+
+            return {
+                tier: 1,
+                topic: selectedTopic,
+                hook: selectedHook,
+                body: bodies[0],
+                status: "completed"
+            };
+        }
+        else if (tier === 2) {
+            // PRO: More Options
+            const topics = await generateTopics(input);
+            const selectedTopic = topics[0];
+            const hooks = await generateHooks(selectedTopic, intent);
+            // In a real app, user selects. Here we simulate 'best' match or return multiple.
+            const bodies = await generateBody(hooks[0], selectedTopic, intent, "medium");
+
+            return {
+                tier: 2,
+                topic: selectedTopic,
+                hooks: hooks, // Return all hooks
+                bodyOptions: bodies, // Return body variations
+                status: "completed"
+            };
+        }
+        else if (tier === 3) {
+            // PREMIUM: Full Suite + Polish
+            const topics = await generateTopics(input);
+            const selectedTopic = topics[0];
+            const hooks = await generateHooks(selectedTopic, intent);
+            const bodies = await generateBody(hooks[0], selectedTopic, intent, "long");
+            const ctas = await generateCTA(bodies[0], intent);
+            const polished = await polishContent(bodies[0], 8, 5); // Auto-polish
+
+            return {
+                tier: 3,
+                topic: selectedTopic,
+                hooks: hooks,
+                bodies: bodies,
+                ctas: ctas,
+                finalPolished: polished,
+                status: "completed"
+            };
+        }
+    } catch (error) {
+        console.error("AI Generation Failed:", error);
+        throw new Error("AI generation failed");
+    }
+}
+

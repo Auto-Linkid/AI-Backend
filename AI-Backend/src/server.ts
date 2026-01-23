@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import generateRouter from './routes/generate';
 import polishRouter from './routes/polish';
+import paymentRouter from './routes/payment';
 
 // Load environment variables
 dotenv.config();
@@ -12,7 +13,11 @@ const PORT = process.env.PORT || 4000;
 
 // Middleware
 app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        process.env.CORS_ORIGIN || ''
+    ].filter(Boolean),
     credentials: true
 }));
 app.use(express.json());
@@ -20,6 +25,7 @@ app.use(express.json());
 // Routes
 app.use(generateRouter);
 app.use(polishRouter);
+app.use(paymentRouter); // Registered new payment route
 
 // Health check
 app.get('/health', (req, res) => {
