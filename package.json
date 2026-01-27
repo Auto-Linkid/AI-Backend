@@ -2,22 +2,15 @@
   "name": "hacks-base-indonesia",
   "version": "0.1.0",
   "private": true,
+  "description": "BasedLink - AI-powered LinkedIn content generator with blockchain payment",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
+    "dev:frontend": "cd Frontend && npm run dev",
+    "dev:backend": "cd AI-Backend && npm run dev",
+    "dev": "echo 'Run dev:frontend and dev:backend in separate terminals'",
+    "install:all": "cd Frontend && npm install && cd ../AI-Backend && npm install"
   },
-  "dependencies": {
-    "@tavily/core": "^0.7.1",
-    "groq-sdk": "^0.37.0",
-    "next": "16.1.4",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
-  },
-  "devDependencies": {
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "typescript": "^5"
-  }
+  "workspaces": [
+    "Frontend",
+    "AI-Backend"
+  ]
 }

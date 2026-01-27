@@ -9,9 +9,9 @@ router.post('/api/polish', async (req: Request, res: Response) => {
 
         console.log('[API] Polish request');
 
-        const result = await polishContent(content, tone, emojiDensity);
+        const response = await polishContent(content, tone, emojiDensity);
 
-        res.json({ result });
+        res.json(response);
     } catch (error) {
         console.error('Polish Error:', error);
         res.status(500).json({ error: 'Failed to polish content' });
