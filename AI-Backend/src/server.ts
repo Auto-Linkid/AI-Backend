@@ -15,6 +15,7 @@ app.use(cors({
     origin: [
         'http://localhost:3000',
         'http://localhost:3001',
+        'https://frontend-zeta-smoky-96.vercel.app',
         process.env.CORS_ORIGIN || ''
     ].filter(Boolean),
     credentials: true
