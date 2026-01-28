@@ -1,23 +1,52 @@
 import OpenAI from 'openai';
 import { tavily } from '@tavily/core';
 import dotenv from 'dotenv';
+import path from 'path'; // Added path
 import viralPosts from '../data/viral_posts.json';
 
-// Load environment variables first
-dotenv.config();
+// Load environment variables robustly
+const envPath = path.resolve(__dirname, '../../.env');
+console.log('[AI Service] Loading .env from:', envPath);
+dotenv.config({ path: envPath });
+
+// Debug Log
+const eigenKey = process.env.EIGEN_API_KEY || '';
+const eigenUrl = process.env.EIGEN_BASE_URL || 'https://eigenai-sepolia.eigencloud.xyz/v1';
+const groqKey = process.env.GROQ_API_KEY || '';
+
+console.log(`[AI Service] Eigen Config: BaseURL=${eigenUrl}`);
+console.log(`[AI Service] Eigen API Key=${eigenKey ? eigenKey.substring(0, 8) + '...' : 'MISSING'}`);
+console.log(`[AI Service] Groq API Key=${groqKey ? groqKey.substring(0, 8) + '...' : 'MISSING'}`);
 
 // Initialize Clients
-// Eigen AI (OpenAI Compatible)
-const openai = new OpenAI({
-    apiKey: process.env.EIGEN_API_KEY || 'placeholder',
-    baseURL: process.env.EIGEN_BASE_URL || 'https://eigenai.eigencloud.xyz/v1',
-    defaultHeaders: {
-        'x-api-key': process.env.EIGEN_API_KEY || ''
-    }
+// Eigen AI (Primary)
+const eigenAI = new OpenAI({
+    apiKey: eigenKey || 'placeholder',
+    baseURL: eigenUrl,
 });
 
+// Groq (Fallback)
+const groqAI = new OpenAI({
+    apiKey: groqKey,
+    baseURL: 'https://api.groq.com/openai/v1',
+});
+
+// Smart Client Selector with Fallback
+let openai = eigenAI;
+let isUsingGroq = false;
+
+const switchToGroq = () => {
+    if (!isUsingGroq) {
+        console.log('[AI Service] ⚠️ Switching to Groq fallback due to Eigen AI error');
+        openai = groqAI;
+        isUsingGroq = true;
+    }
+};
+
 const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY || '' });
-const MODEL_NAME = process.env.EIGEN_MODEL || 'gpt-oss-120b-f16';
+const EIGEN_MODEL = process.env.EIGEN_MODEL || 'gpt-oss-120b-f16';
+const GROQ_MODEL = 'llama-3.3-70b-versatile'; // Groq's best model
+const MODEL_NAME = isUsingGroq ? GROQ_MODEL : EIGEN_MODEL;
 
 // Types
 export interface GenerateOptions {
@@ -36,6 +65,95 @@ export interface AIResponse<T> {
     result: T;
     signature?: string;
 }
+
+// Helper: Resolve Model ID from UI Name
+const resolveModelId = (modelName?: string): string => {
+    // If using Groq fallback, return Groq model
+    if (isUsingGroq) return GROQ_MODEL;
+
+    // Default
+    if (!modelName) return EIGEN_MODEL;
+
+    // Normalization
+    const name = modelName.toLowerCase();
+
+    if (name.includes('gpt-oss') || name.includes('eigen')) {
+        return 'gpt-oss-120b-f16';
+    }
+    if (name.includes('qwen')) {
+        return 'meta-llama-3-1-8b-instruct-q3'; // Best fallback for now
+    }
+
+    return EIGEN_MODEL;
+};
+
+// Helper: Robust JSON Cleaner & Parser with Fallback
+const cleanAndParseJSON = (text: string): any => {
+    // 1. Clean markdown code blocks (```json ... ```)
+    let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+
+    // 2. Try JSON Extraction
+    try {
+        const firstOpen = cleaned.indexOf('[');
+        const lastClose = cleaned.lastIndexOf(']');
+
+        if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+            const potentialJson = cleaned.substring(firstOpen, lastClose + 1);
+            const parsed = JSON.parse(potentialJson);
+            if (Array.isArray(parsed)) return parsed;
+        }
+
+        // Try fixing newlines if strict parse failed
+        try {
+            const fixed = cleaned.replace(/\n\s*(?!["}\]])/g, "\\n");
+            const parsed = JSON.parse(fixed);
+            if (Array.isArray(parsed)) return parsed;
+        } catch (e) { }
+
+    } catch (e) {
+        console.log("JSON Parse Error, trying fallback:", e);
+    }
+
+    console.log("JSON Extraction failed, attempting manual split for text:", text.substring(0, 50) + "...");
+
+    // 3. Fallback: Manual Split
+    // A: Check if it's a comma-separated list of quoted strings
+    if (cleaned.includes('", "') || cleaned.startsWith('"')) {
+        const quotedItems = cleaned.split(/",\s*|,\s*"/).map(item =>
+            item.replace(/^\[?"|"?\]?$/g, '').trim()
+        ).filter(i => i.length > 5);
+        if (quotedItems.length > 1) return quotedItems;
+    }
+
+    // B: Regex looks for: Newline + (Number + dot/paren OR Bullet OR "Option X") + Space
+    const listItems = text.split(/(?:\r\n|\r|\n)\s*(?:[\d]+[\.\)]|\-|\*|•|Option \d+|Variation \d+)\s+/i);
+
+    const validItems = listItems
+        .map(item => item.trim())
+        .filter(item => {
+            const lower = item.toLowerCase();
+            if (item.length < 5) return false; // Lowered threshold slightly
+            if (lower.startsWith("here are")) return false;
+            if (lower.startsWith("berikut adalah")) return false;
+            if (lower.startsWith("sure!")) return false;
+            if (lower.includes("linkedin post")) return false;
+            // Remove artifacts like [ or " at start if manual split caught them
+            return true;
+        })
+        .map(item => item.replace(/^\["|"$|^"|",?$/g, '').trim()); // Clean extra quotes/brackets
+
+    if (validItems.length > 1) {
+        return validItems;
+    }
+
+    // 4. Last Resort: Split by double newlines
+    const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 20);
+    if (paragraphs.length > 1) {
+        return paragraphs;
+    }
+
+    return [text];
+};
 
 // --- Helpers from "Highly Modelled" Logic ---
 
@@ -193,26 +311,45 @@ const getViralContext = (count = 2, intent = 'viral', length = 'medium') => {
 // 1. Generate Topics
 export async function generateTopics(input: string, depth: number = 3, model?: string): Promise<AIResponse<string[]>> {
     const prompt = `
-    Generate 8 distinct, viral-worthy LinkedIn post topics based on the user's input: "${input}".
-    Focus on professional insights, personal growth, or industry trends.
-    Return ONLY a valid JSON array of strings. No markdown, no "Here are...".
-    Example: ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8"]
+    Generate exactly 10 distinct, viral-worthy LinkedIn post topics based on the user's input: "${input}".
+    
+    REQUIREMENTS:
+    - Focus on professional insights, personal growth, or industry trends
+    - Each topic should be unique and engaging
+    - Make them scroll-stopping and curiosity-inducing
+    - Keep each topic concise (1-2 sentences max)
+    
+    OUTPUT FORMAT:
+    - STRICT JSON ARRAY ONLY containing 10 strings.
+    - DO NOT include "Here are...", "Below are...", or any intro text.
+    - Start immediately with [.
+    - End immediately with ].
+    
+    Example: ["Topic 1", "Topic 2", "Topic 3", "Topic 4", "Topic 5", "Topic 6", "Topic 7", "Topic 8", "Topic 9", "Topic 10"]
     `;
 
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: model || MODEL_NAME,
-            temperature: 0.7,
+            model: resolveModelId(model),
+            temperature: 0.8,
+            max_tokens: 2500, // Ensure enough tokens for 10 topics
         });
 
         const content = completion.choices[0]?.message?.content || '[]';
-        const result = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+        const result = cleanAndParseJSON(content);
         const signature = (completion as any).signature;
 
         return { result, signature };
-    } catch (e) {
-        console.error("Eigen AI Error (Topics):", e);
+    } catch (e: any) {
+        console.error("AI Error (Topics):", e?.message || e);
+
+        // If authentication error and not using Groq yet, switch and retry
+        if (!isUsingGroq && e?.status === 401) {
+            switchToGroq();
+            return generateTopics(input, depth, model);
+        }
+
         return { result: [input] };
     }
 }
@@ -220,26 +357,61 @@ export async function generateTopics(input: string, depth: number = 3, model?: s
 // 2. Generate Hooks
 export async function generateHooks(topic: string, intent: string = 'viral', model?: string): Promise<AIResponse<string[]>> {
     const prompt = `
-    Write 8 powerful, scroll-stopping LinkedIn hooks for the topic: "${topic}".
-    Intent: ${intent}.
-    Return ONLY a valid JSON array of strings.
-    Example: ["Hook 1...", "Hook 2...", "Hook 3...", "Hook 4..."]
+    You are a LinkedIn Viral Content Expert. Write 8 powerful, scroll-stopping hooks for the topic: "${topic}".
+    
+    Intent: ${intent.toUpperCase()}
+    
+    HOOK WRITING RULES:
+    1. **First Line is CRITICAL** - Must stop the scroll immediately
+    2. **Pattern Breaking** - Use unexpected angles, contrarian takes, or surprising facts
+    3. **Curiosity Gap** - Make readers NEED to know more
+    4. **Emotional Trigger** - Fear of missing out, surprise, anger, joy, inspiration
+    5. **Specific > Generic** - Use numbers, names, concrete examples
+    
+    PROVEN HOOK FORMULAS:
+    - "I spent [X time/money] on [Y]. Here's what I learned..."
+    - "Everyone does [X]. Here's why you should do [Y] instead..."
+    - "Unpopular opinion: [controversial take]"
+    - "[Number] [surprising thing] that [result]"
+    - "I used to [belief]. Then I discovered [truth]..."
+    - "The biggest lie about [topic]: [statement]"
+    
+    LANGUAGE:
+    - Use Bahasa Indonesia naturally
+    - Keep English idioms/technical terms (e.g., "game-changer", "mindset", "AI")
+    - Conversational and authentic tone
+    
+    OUTPUT FORMAT:
+    - STRICT JSON ARRAY ONLY.
+    - DO NOT include "Here are...", "Below are...", or any intro text.
+    - Start immediately with [.
+    - End immediately with ].
+    
+    Example: ["Hook 1...", "Hook 2...", "Hook 3...", "Hook 4...", "Hook 5...", "Hook 6...", "Hook 7...", "Hook 8..."]
     `;
 
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: model || MODEL_NAME,
-            temperature: 0.8,
+            model: resolveModelId(model),
+            temperature: 0.85,
+            max_tokens: 2500,
         });
 
         const content = completion.choices[0]?.message?.content || '[]';
-        const result = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+        const result = cleanAndParseJSON(content);
         const signature = (completion as any).signature;
 
         return { result, signature };
-    } catch (e) {
-        console.error("Eigen AI Error (Hooks):", e);
+    } catch (e: any) {
+        console.error("AI Error (Hooks):", e?.message || e);
+
+        // If authentication error and not using Groq yet, switch and retry
+        if (!isUsingGroq && e?.status === 401) {
+            switchToGroq();
+            return generateHooks(topic, intent, model);
+        }
+
         return { result: [`${topic} is important because...`] };
     }
 }
@@ -260,19 +432,19 @@ export async function generateBody(hook: string, context: string, intent: string
     ).join('\n\n');
 
     // C. Instructions
-    let lengthInstruction = "MEDIUM LENGTH. 100-200 words.";
-    if (length === 'short') lengthInstruction = "COMPACT ESSAY. 50-100 words. At least 5 sentences.";
-    else if (length === 'long') lengthInstruction = "LONG LENGTH. >200 words. Deep analysis.";
+    let lengthInstruction = "MEDIUM LENGTH. 100-200 words. At least 8 sentences.";
+    if (length === 'short') lengthInstruction = "SHORT & PUNCHY. 50-100 words. At least 5 sentences. Keep it tight and impactful.";
+    else if (length === 'long') lengthInstruction = "LONG FORM. 200-300 words. Deep analysis with multiple sections.";
 
     const toneInstruction = getToneInstruction(5); // Default tone if not passed, TODO: propagate settings
     const emojiInstruction = getEmojiInstruction('moderate');
     const languageInstruction = getLanguageInstruction('id'); // Default ID, TODO: propagate settings
 
     const prompt = `
-    You are a LinkedIn Ghostwriter. Expert at viral content.
+    You are a LinkedIn Ghostwriter. Expert at viral content that gets engagement.
     
     Write the MAIN BODY for a LinkedIn post using this Hook: "${hook}".
-    Topic: "${context}".
+    Topic Context: "${context}".
     Length: ${lengthInstruction}
     Intent: ${intent.toUpperCase()}
     
@@ -283,37 +455,68 @@ export async function generateBody(hook: string, context: string, intent: string
     CONTEXT from Web Research:
     ${researchContext}
 
-    STYLE REFERENCES (Mimic these):
+    STYLE REFERENCES (Mimic these patterns):
     ${viralExamples}
 
+    CRITICAL WRITING RULES:
+    1. **One Idea Per Line** - Break thoughts into separate lines for readability
+    2. **Short Sentences** - Max 15 words per sentence
+    3. **Active Voice** - "I discovered" not "It was discovered"
+    4. **Visual Hierarchy** - Use line breaks generously
+    5. **No Fluff** - Every word must add value
+    6. **Personal Stories** - Use "Saya", "Aku" to make it relatable
+    7. **Specific Examples** - Real numbers, names, situations
+    8. **Pattern: Problem → Insight → Action**
+    
+    FORMATTING (MANDATORY):
+    - **CRITICAL**: Use double newline characters (\\n\\n) between EVERY paragraph or list item.
+    - **DO NOT** write long walls of text.
+    - **DO NOT** mimic the dense formatting of the examples above. YOUR formatting must be cleaner.
+    - Single line for impact statements
+    - Natural emoji placement (not forced)
+    
     INSTRUCTIONS:
-    - Write 4 distinct versions.
-    - Mimic the "Viral" style: Short sentences. One line per paragraph. 
-    - NO FLUFF.
-    - Return ONLY valid JSON array of strings.
-    Example: ["Option 1...", "Option 2...", "Option 3...", "Option 4..."]
+    - Generate EXACTLY 4 distinct variations
+    - Each variation should have a different angle/approach
+    - End with a strong closing thought (not CTA - that comes later)
+    
+    OUTPUT FORMAT:
+    - STRICT JSON ARRAY ONLY containing 4 strings.
+    - The strings MUST contain \\n\\n for line breaks.
+    - DO NOT include "Here are...", "Below are...", or any intro text.
+    - Start immediately with [.
+    - End immediately with ].
+    
+    Example format: ["Body Option 1...\\n\\nNEXT PARAGRAPH...\\n\\nfinal point.", "Body Option 2..."]
     `;
 
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: model || MODEL_NAME,
-            temperature: 0.8,
+            model: resolveModelId(model),
+            temperature: 0.85,
+            max_tokens: 3500,
         });
 
         const content = completion.choices[0]?.message?.content || '[]';
         console.log('[AI Body] Response preview:', content.substring(0, 100));
 
-        const cleaned = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleaned);
+        const parsed = cleanAndParseJSON(content);
         const signature = (completion as any).signature;
 
         if (Array.isArray(parsed) && parsed.length > 0) {
             return { result: parsed, signature };
         }
         return { result: [content], signature };
-    } catch (error) {
-        console.error('[AI Body] Parse failed, returning raw content', error);
+    } catch (error: any) {
+        console.error('[AI Body] Error:', error?.message || error);
+
+        // If authentication error and not using Groq yet, switch and retry
+        if (!isUsingGroq && error?.status === 401) {
+            switchToGroq();
+            return generateBody(hook, context, intent, length, model);
+        }
+
         return { result: ["Error generating body. Please try again."] };
     }
 }
@@ -321,26 +524,60 @@ export async function generateBody(hook: string, context: string, intent: string
 // 4. Generate CTA (Call to Action)
 export async function generateCTA(body: string, intent: string, model?: string): Promise<AIResponse<string[]>> {
     const prompt = `
-    Write 4 compelling Call-To-Actions (CTAs) for a LinkedIn post with this body: "${body.substring(0, 50)}...".
-    Intent: ${intent}.
-    Return ONLY a valid JSON array of strings.
-    Example: ["Agree?", "What do you think?", "Discuss!", "Thoughts?"]
+    You are a LinkedIn engagement expert. Generate 4 compelling Call-To-Actions (CTAs) for a LinkedIn post.
+    
+    Post Body Context: "${body.substring(0, 150)}..."
+    Intent: ${intent.toUpperCase()}
+    
+    CTA RULES:
+    1. **Keep it SHORT** - Max 2 sentences
+    2. **Engage, Don't Sell** - Ask questions, invite discussion
+    3. **Match the Tone** - Align with the post's vibe
+    4. **Natural Flow** - Should feel like a conversation closer
+    
+    CTA TYPES TO VARY:
+    - Question: "Setuju? Atau ada perspektif lain?"
+    - Invitation: "Share pengalaman kalian di comments 👇"
+    - Reflection: "Bagaimana menurut kalian?"
+    - Community: "Tag someone yang perlu baca ini!"
+    
+    LANGUAGE:
+    - Use Bahasa Indonesia conversationally
+    - Keep emoji usage light (1-2 max per CTA)
+    - Authentic and warm tone
+    
+    OUTPUT FORMAT:
+    - STRICT JSON ARRAY ONLY.
+    - DO NOT include "Here are...", "Below are...", or any intro text.
+    - Start immediately with [.
+    - End immediately with ].
+    
+    Example: ["CTA 1", "CTA 2", "CTA 3", "CTA 4"]
     `;
 
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: model || MODEL_NAME,
-            temperature: 0.7,
+            model: resolveModelId(model),
+            temperature: 0.75,
+            max_tokens: 1500,
         });
 
         const content = completion.choices[0]?.message?.content || '[]';
-        const result = JSON.parse(content.replace(/```json/g, '').replace(/```/g, '').trim());
+        const result = cleanAndParseJSON(content);
         const signature = (completion as any).signature;
 
         return { result, signature };
-    } catch (e) {
-        return { result: ["What are your thoughts?", "Let's discuss below 👇"] };
+    } catch (e: any) {
+        console.error("AI Error (CTA):", e?.message || e);
+
+        // If authentication error and not using Groq yet, switch and retry
+        if (!isUsingGroq && e?.status === 401) {
+            switchToGroq();
+            return generateCTA(body, intent, model);
+        }
+
+        return { result: ["Bagaimana menurut kalian?", "Setuju? 👇", "Share pengalaman kalian!", "Thoughts?"] };
     }
 }
 
@@ -368,14 +605,21 @@ Return ONLY the polished post text, nothing else.`;
     try {
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
-            model: MODEL_NAME,
+            model: resolveModelId(),
             temperature: 0.3,
         });
         const result = completion.choices[0]?.message?.content || content;
         const signature = (completion as any).signature;
         return { result, signature };
-    } catch (e) {
-        console.error("Eigen AI Error (Polish):", e);
+    } catch (e: any) {
+        console.error("AI Error (Polish):", e?.message || e);
+
+        // If authentication error and not using Groq yet, switch and retry
+        if (!isUsingGroq && e?.status === 401) {
+            switchToGroq();
+            return polishContent(content, tone, emojiDensity);
+        }
+
         return { result: content };
     }
 }

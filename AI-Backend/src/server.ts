@@ -1,12 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config(); // Load env BEFORE other imports
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import generateRouter from './routes/generate';
 import polishRouter from './routes/polish';
 import paymentRouter from './routes/payment';
-
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 4000;
