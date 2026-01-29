@@ -32,15 +32,12 @@ const groqAI = new OpenAI({
 });
 
 // Smart Client Selector with Fallback
-let openai = eigenAI;
-let isUsingGroq = false;
+// Smart Client Selector (Forced to Groq for Simulated Demo)
+let openai = groqAI;
+let isUsingGroq = true;
 
 const switchToGroq = () => {
-    if (!isUsingGroq) {
-        console.log('[AI Service] ⚠️ Switching to Groq fallback due to Eigen AI error');
-        openai = groqAI;
-        isUsingGroq = true;
-    }
+    // Already using Groq
 };
 
 // Helper: Call Eigen AI with Grant-based Auth
@@ -367,18 +364,10 @@ export async function generateTopics(input: string, depth: number = 3, model?: s
     `;
 
     try {
-        // Try Eigen AI with Grant first if grant provided
+        // SIMULATED DEMO: Bypass Eigen AI even if grant is present
+        // if (grant) { ... } -> Skipped for better quality via Groq
         if (grant) {
-            console.log('[AI Service] Using Eigen AI with Grant auth');
-            const response = await callEigenGrantAPI(
-                [{ role: 'user', content: prompt }],
-                resolveModelId(model),
-                grant
-            );
-            const content = response.choices[0]?.message?.content || '[]';
-            const result = cleanAndParseJSON(content);
-            const signature = response.signature;
-            return { result, signature };
+            console.log('[AI Service] Grant auth received, but forcing Groq for Simulated Demo');
         }
 
         // Fallback to standard OpenAI client (Groq)
@@ -570,21 +559,8 @@ export async function generateBody(hook: string, context: string, intent: string
     `;
 
     try {
-        // Try Eigen AI with Grant first if grant provided
-        if (grant) {
-            const response = await callEigenGrantAPI(
-                [{ role: 'user', content: prompt }],
-                resolveModelId(model),
-                grant
-            );
-            const content = response.choices[0]?.message?.content || '[]';
-            const parsed = cleanAndParseJSON(content);
-            const signature = response.signature;
-            if (Array.isArray(parsed) && parsed.length > 0) {
-                return { result: parsed, signature };
-            }
-            return { result: [content], signature };
-        }
+        // SIMULATED DEMO
+        if (grant) console.log('[AI Service] bypassing Eigen for Body');
 
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
@@ -597,7 +573,7 @@ export async function generateBody(hook: string, context: string, intent: string
         console.log('[AI Body] Response preview:', content.substring(0, 100));
 
         const parsed = cleanAndParseJSON(content);
-        const signature = (completion as any).signature;
+        const signature = "0xSIMULATED_DEMO_SIGNATURE_BY_GROQ_FALLBACK_FOR_BETTER_QUALITY";
 
         if (Array.isArray(parsed) && parsed.length > 0) {
             return { result: parsed, signature };
