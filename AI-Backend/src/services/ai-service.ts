@@ -124,70 +124,34 @@ const resolveModelId = (modelName?: string): string => {
 
 // Helper: Robust JSON Cleaner & Parser with Fallback
 const cleanAndParseJSON = (text: string): any => {
-    // 1. Clean markdown code blocks (```json ... ```)
+    console.log('[AI Clean] Raw:', text.substring(0, 50) + '...');
+
+    // 1. Clean markdown code blocks
     let cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
 
-    // 2. Try JSON Extraction
-    try {
-        const firstOpen = cleaned.indexOf('[');
-        const lastClose = cleaned.lastIndexOf(']');
-
-        if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
-            const potentialJson = cleaned.substring(firstOpen, lastClose + 1);
-            const parsed = JSON.parse(potentialJson);
-            if (Array.isArray(parsed)) return parsed;
-        }
-
-        // Try fixing newlines if strict parse failed
+    // 2. Try Regex Extraction of Array [ ... ]
+    const arrayMatch = cleaned.match(/\[([\s\S]*?)\]/);
+    if (arrayMatch) {
         try {
-            const fixed = cleaned.replace(/\n\s*(?!["}\]])/g, "\\n");
-            const parsed = JSON.parse(fixed);
-            if (Array.isArray(parsed)) return parsed;
-        } catch (e) { }
-
-    } catch (e) {
-        console.log("JSON Parse Error, trying fallback:", e);
+            const parsed = JSON.parse(arrayMatch[0]);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        } catch (e) { console.log('Regex JSON failed'); }
     }
 
-    console.log("JSON Extraction failed, attempting manual split for text:", text.substring(0, 50) + "...");
+    // 3. Fallback: Split by lines (if AI gave a list)
+    const lines = text.split('\n')
+        .map(l => l.trim())
+        .filter(l => l.length > 10)
+        .filter(l => !l.toLowerCase().includes('here are'))
+        .filter(l => !l.startsWith('['))
+        .filter(l => !l.startsWith(']'))
+        .map(l => l.replace(/^\d+[\.\)]\s*/, '')) // Remove "1. ", "2. "
+        .map(l => l.replace(/^["']|["']$/g, '')) // Remove quotes
+        .map(l => l.replace(/,$/, '')); // Remove trailing comma
 
-    // 3. Fallback: Manual Split
-    // A: Check if it's a comma-separated list of quoted strings
-    if (cleaned.includes('", "') || cleaned.startsWith('"')) {
-        const quotedItems = cleaned.split(/",\s*|,\s*"/).map(item =>
-            item.replace(/^\[?"|"?\]?$/g, '').trim()
-        ).filter(i => i.length > 5);
-        if (quotedItems.length > 1) return quotedItems;
-    }
+    if (lines.length > 0) return lines;
 
-    // B: Regex looks for: Newline + (Number + dot/paren OR Bullet OR "Option X") + Space
-    const listItems = text.split(/(?:\r\n|\r|\n)\s*(?:[\d]+[\.\)]|\-|\*|•|Option \d+|Variation \d+)\s+/i);
-
-    const validItems = listItems
-        .map(item => item.trim())
-        .filter(item => {
-            const lower = item.toLowerCase();
-            if (item.length < 5) return false; // Lowered threshold slightly
-            if (lower.startsWith("here are")) return false;
-            if (lower.startsWith("berikut adalah")) return false;
-            if (lower.startsWith("sure!")) return false;
-            if (lower.includes("linkedin post")) return false;
-            // Remove artifacts like [ or " at start if manual split caught them
-            return true;
-        })
-        .map(item => item.replace(/^\["|"$|^"|",?$/g, '').trim()); // Clean extra quotes/brackets
-
-    if (validItems.length > 1) {
-        return validItems;
-    }
-
-    // 4. Last Resort: Split by double newlines
-    const paragraphs = text.split(/\n\n+/).map(p => p.trim()).filter(p => p.length > 20);
-    if (paragraphs.length > 1) {
-        return paragraphs;
-    }
-
-    return [text];
+    return []; // Return empty only if totally failed
 };
 
 // --- Helpers from "Highly Modelled" Logic ---

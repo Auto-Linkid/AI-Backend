@@ -108,31 +108,83 @@ router.post('/api/payment', async (req: Request, res: Response) => {
 router.post('/api/execute-payment', async (req: Request, res: Response) => {
     try {
         const { userAddress, tier } = req.body;
-        console.log(`[Payment] SIMULATED (Mock) Payment for ${userAddress}, tier ${tier}`);
 
-        // SIMULATED DEMO: Bypass Blockchain Transaction
-        // Return fake success to prevent "Invalid Private Key" errors
+        if (!userAddress || !tier) {
+            return res.status(400).json({ success: false, error: 'Missing userAddress or tier' });
+        }
 
-        // Mock delay for realism
-        await new Promise(r => setTimeout(r, 1500));
+        console.log(`[Payment] Execute (Permissionless) for ${userAddress}, tier ${tier}`);
 
-        const mockTxHash = "0x" + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
-        const contentId = `linkid-simulated-${Date.now()}`;
+        // Config
+        const provider = new ethers.JsonRpcProvider(RPC_URL);
+        const wallet = new ethers.Wallet(PRIVATE_KEY!, provider); // Facilitator/Paymaster Wallet
+
+        // Constants (should match frontend)
+        const MOCK_USDC_ADDRESS = '0xfD96ABdF9acb7Cde74D9DaC2D469d7717A80ee56';
+        const TIERS: Record<number, bigint> = {
+            1: 5_000_000n,    // $5
+            2: 15_000_000n,   // $15
+            3: 30_000_000n    // $30
+        };
+        const amount = TIERS[Number(tier)];
+
+        if (!amount) {
+            return res.status(400).json({ success: false, error: 'Invalid tier' });
+        }
+
+        const usdcAbi = [
+            "function allowance(address owner, address spender) view returns (uint256)",
+            "function balanceOf(address account) view returns (uint256)",
+            "function transferFrom(address from, address to, uint256 amount) returns (bool)"
+        ];
+        const usdcContract = new ethers.Contract(MOCK_USDC_ADDRESS, usdcAbi, wallet);
+
+        // 1. Check Allowance
+        // userAddress must have approved wallet.address
+        const allowance = await usdcContract.allowance(userAddress, wallet.address);
+        if (allowance < amount) {
+            console.warn(`[Payment] Insufficient allowance: ${allowance.toString()} < ${amount.toString()}`);
+            return res.status(400).json({
+                success: false,
+                error: 'Insufficient USDC allowance. Please enable permissionless mode first.',
+                needsApproval: true
+            });
+        }
+
+        // 2. Check Balance
+        const balance = await usdcContract.balanceOf(userAddress);
+        if (balance < amount) {
+            return res.status(400).json({ success: false, error: 'Insufficient USDC balance' });
+        }
+
+        // 3. Execute TransferFrom
+        console.log(`[Payment] Executing transferFrom...`);
+        const tx = await usdcContract.transferFrom(userAddress, wallet.address, amount);
+        console.log(`[Payment] Tx Sent: ${tx.hash}`);
+
+        const receipt = await tx.wait();
+        if (receipt.status !== 1) {
+            throw new Error('Transaction reverted');
+        }
+        console.log(`[Payment] Tx Confirmed: ${receipt.hash}`);
+
+        // 4. Generate Content ID
+        const contentId = `linkid-${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
 
         return res.json({
             success: true,
             contentId,
-            txHash: mockTxHash,
+            txHash: receipt.hash,
             content: {
                 tier,
-                title: 'AI Generated Content (Simulated)',
-                content: 'Payment simulation successful.'
+                title: 'AI Generated Content',
+                content: 'Content generation triggered successfully via permissionless flow.'
             }
         });
 
     } catch (error: any) {
         console.error('[Payment] Execute Error:', error);
-        return res.status(500).json({ success: false, error: 'Simulation failed' });
+        return res.status(500).json({ success: false, error: error.message || 'Execution failed' });
     }
 });
 
