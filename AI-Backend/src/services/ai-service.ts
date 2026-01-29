@@ -459,72 +459,26 @@ export async function generateBody(hook: string, context: string, intent: string
         researchContext = search.results.map((r: any) => `- ${r.title}: ${r.content}`).join('\n');
     } catch (e) { console.log('Research failed', e); }
 
-    // B. Style Layer
-    const viralExamples = getViralContext(2, intent, length).map((post: any, i: number) =>
-        `[Example ${i + 1} - Style Reference]\n${post.body}`
-    ).join('\n\n');
-
-    // C. Instructions
-    let lengthInstruction = "MEDIUM LENGTH. 100-200 words. At least 8 sentences.";
-    if (length === 'short') lengthInstruction = "SHORT & PUNCHY. 50-100 words. At least 5 sentences. Keep it tight and impactful.";
-    else if (length === 'long') lengthInstruction = "LONG FORM. 200-300 words. Deep analysis with multiple sections.";
-
-    const toneInstruction = getToneInstruction(5); // Default tone if not passed, TODO: propagate settings
-    const emojiInstruction = getEmojiInstruction('moderate');
-    const languageInstruction = getLanguageInstruction('id'); // Default ID, TODO: propagate settings
-
     const prompt = `
-    You are a LinkedIn Ghostwriter. Expert at viral content that gets engagement.
+    You are a LinkedIn Ghostwriter. Expert at viral content.
     
-    Write the MAIN BODY for a LinkedIn post using this Hook: "${hook}".
-    Topic Context: "${context}".
-    Length: ${lengthInstruction}
-    Intent: ${intent.toUpperCase()}
+    Topic: "${context}"
+    Hook: "${hook}"
     
-    ${languageInstruction}
-    ${toneInstruction}
-    ${emojiInstruction}
-    
-    CONTEXT from Web Research:
-    ${researchContext}
-
-    STYLE REFERENCES (Mimic these patterns):
-    ${viralExamples}
-
-    CRITICAL WRITING RULES:
-    1. **One Idea Per Line** - Break thoughts into separate lines for readability
-    2. **Short Sentences** - Max 15 words per sentence
-    3. **Active Voice** - "I discovered" not "It was discovered"
-    4. **Visual Hierarchy** - Use line breaks generously
-    5. **No Fluff** - Every word must add value
-    6. **Personal Stories** - Use "Saya", "Aku" to make it relatable
-    7. **Specific Examples** - Real numbers, names, situations
-    8. **Pattern: Problem → Insight → Action**
-    
-    FORMATTING (MANDATORY):
-    - **CRITICAL**: Use double newline characters (\\n\\n) between EVERY paragraph or list item.
-    - **DO NOT** write long walls of text.
-    - **DO NOT** mimic the dense formatting of the examples above. YOUR formatting must be cleaner.
-    - Single line for impact statements
-    - Natural emoji placement (not forced)
-    
-    INSTRUCTIONS:
-    - Generate EXACTLY 4 distinct variations
-    - Each variation should have a different angle/approach
-    - End with a strong closing thought (not CTA - that comes later)
+    Goal: Write 4 DIFFERENT variations of tags formatted as LinkedIn post bodies.
     
     OUTPUT FORMAT:
-    - STRICT JSON ARRAY ONLY.
-    - NO Markdown code blocks (no \`\`\`json).
-    - MUST contain exactly 4 separate strings.
-    - Use \\n\\n for line breaks within each string.
-    - Example: ["Body 1...", "Body 2...", "Body 3...", "Body 4..."]
+    - Pure plain text.
+    - Separate each variation with "|||".
+    - No JSON.
+    - No intro text.
+    - Use double newlines for paragraphs.
+    
+    Example:
+    Variation 1 text... ||| Variation 2 text... ||| Variation 3 text... ||| Variation 4 text...
     `;
 
     try {
-        // SIMULATED DEMO
-        if (grant) console.log('[AI Service] bypassing Eigen for Body');
-
         const completion = await openai.chat.completions.create({
             messages: [{ role: 'user', content: prompt }],
             model: resolveModelId(model),
@@ -532,31 +486,16 @@ export async function generateBody(hook: string, context: string, intent: string
             max_tokens: 3500,
         });
 
-        const content = completion.choices[0]?.message?.content || '[]';
-        console.log('[AI Body] Response preview:', content.substring(0, 100));
+        const content = completion.choices[0]?.message?.content || '';
 
-        const parsed = cleanAndParseJSON(content);
-        const signature = "0xSIMULATED_DEMO_SIGNATURE_BY_GROQ_FALLBACK_FOR_BETTER_QUALITY";
+        let bodies = content.split('|||').map(b => b.trim()).filter(b => b.length > 10);
+        if (bodies.length === 0) bodies = [content];
 
-        if (Array.isArray(parsed) && parsed.length > 0) {
-            return { result: parsed, signature };
-        }
-        return { result: [content], signature };
+        const signature = "0xSIMULATED_DEMO_SIGNATURE_BY_GROQ";
+
+        return { result: bodies, signature };
     } catch (error: any) {
         console.error('[AI Body] Error:', error?.message || error);
-
-        // If Eigen Grant fails, fallback to Groq
-        if (grant && !isUsingGroq) {
-            switchToGroq();
-            return generateBody(hook, context, intent, length, model);
-        }
-
-        // If authentication error and not using Groq yet, switch and retry
-        if (!isUsingGroq && error?.status === 401) {
-            switchToGroq();
-            return generateBody(hook, context, intent, length, model);
-        }
-
         return { result: ["Error generating body. Please try again."] };
     }
 }
