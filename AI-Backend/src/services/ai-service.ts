@@ -432,11 +432,12 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
     
     OUTPUT FORMAT:
     - STRICT JSON ARRAY ONLY.
-    - DO NOT include "Here are...", "Below are...", or any intro text.
-    - Start immediately with [.
-    - End immediately with ].
-    
-    Example: ["Hook 1...", "Hook 2...", "Hook 3...", "Hook 4...", "Hook 5...", "Hook 6...", "Hook 7...", "Hook 8..."]
+    - NO Markdown code blocks (no \`\`\`json).
+    - NO introductory text.
+    - Start with [. End with ].
+    - Example: ["Hook 1...", "Hook 2...", "Hook 3..."]
+
+    CRITICAL: You MUST return exactly 8 items. Do not bundle them into one string.
     `;
 
     try {
@@ -549,13 +550,11 @@ export async function generateBody(hook: string, context: string, intent: string
     - End with a strong closing thought (not CTA - that comes later)
     
     OUTPUT FORMAT:
-    - STRICT JSON ARRAY ONLY containing 4 strings.
-    - The strings MUST contain \\n\\n for line breaks.
-    - DO NOT include "Here are...", "Below are...", or any intro text.
-    - Start immediately with [.
-    - End immediately with ].
-    
-    Example format: ["Body Option 1...\\n\\nNEXT PARAGRAPH...\\n\\nfinal point.", "Body Option 2..."]
+    - STRICT JSON ARRAY ONLY.
+    - NO Markdown code blocks (no \`\`\`json).
+    - MUST contain exactly 4 separate strings.
+    - Use \\n\\n for line breaks within each string.
+    - Example: ["Body 1...", "Body 2...", "Body 3...", "Body 4..."]
     `;
 
     try {
