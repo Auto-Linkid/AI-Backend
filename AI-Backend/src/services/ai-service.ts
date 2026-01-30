@@ -157,7 +157,7 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
     You are a viral LinkedIn Ghostwriter.
     Current Date: ${dateContext}.
     
-    Write 4 distinct, high-engagement "Hooks" (opening lines) for a post about: "${topic}".
+    Write 8 distinct, high-engagement "Hooks" (opening lines) for a post about: "${topic}".
     
     INTENT: ${intent.toUpperCase()}
     
@@ -170,7 +170,7 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
     3. NO generic openers.
 
     Return a STRICT JSON ARRAY of strings.
-    Example: ["Hook option 1...", "Hook option 2...", "Hook option 3..."]
+    Example: ["Hook 1...", "Hook 2...", "Hook 3...", "Hook 4...", "Hook 5...", "Hook 6...", "Hook 7...", "Hook 8..."]
     `;
 
     try {
@@ -195,7 +195,7 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
             else hooks = [content];
         }
 
-        return { result: hooks.slice(0, 5), signature: 'groq-signature-v1' };
+        return { result: hooks.slice(0, 8), signature: 'groq-signature-v1' };
     } catch (error: any) {
         console.error("Groq Hooks Error:", error);
         return { result: [`${topic} is important...`], signature: 'error' };
@@ -246,10 +246,10 @@ export async function generateBody(
     ${getToneInstruction(5)}
     ${getEmojiInstruction('moderate')}
     
-    Write 2 distinct versions (Option A and Option B).
+    Write 4 distinct versions.
     
     Return a STRICT JSON ARRAY of strings.
-    Example: ["First body variation...", "Second body variation..."]
+    Example: ["Body version 1...", "Body version 2...", "Body version 3...", "Body version 4..."]
     
     NO intro. NO explanations.
     `;
@@ -279,7 +279,7 @@ export async function generateBody(
             if (bodies.length === 0) bodies = [content];
         }
 
-        return { result: bodies.slice(0, 3), signature: 'groq-signature-v1' };
+        return { result: bodies.slice(0, 4), signature: 'groq-signature-v1' };
     } catch (error: any) {
         console.error("Groq Body Error:", error);
         return { result: ["Error generating body."], signature: 'error' };
@@ -317,7 +317,7 @@ export async function generateCTA(body: string, intent: string, model?: string, 
                 ctas = parsed.map(p => typeof p === 'string' ? p : p.content);
             }
         } catch {
-            ctas = ["Thoughts?", "Agree? 👇", "What's your take?"];
+            ctas = ["Thoughts?", "Agree? 👇", "What's your take?", "Share your thoughts!"];
         }
 
         return { result: ctas, signature: 'groq-signature-v1' };
