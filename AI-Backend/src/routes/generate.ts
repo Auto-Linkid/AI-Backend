@@ -25,16 +25,16 @@ router.post('/api/generate', async (req: Request, res: Response) => {
 
         switch (step) {
             case 'topics':
-                response = await generateTopics(params.input, params.researchDepth, params.model, grant);
+                response = await generateTopics(params.input, params.researchDepth, params.model, grant, params.language);
                 break;
             case 'hooks':
-                response = await generateHooks(params.input, params.intent, params.model, grant);
+                response = await generateHooks(params.input, params.intent, params.model, grant, params.language);
                 break;
             case 'body':
-                response = await generateBody(params.input, params.context, params.intent, params.length, params.model, grant);
+                response = await generateBody(params.input, params.context, params.intent, params.length, params.model, grant, params.language);
                 break;
             case 'cta':
-                response = await generateCTA(params.input, params.intent, params.model, grant);
+                response = await generateCTA(params.input, params.intent, params.model, grant, params.language);
                 break;
             default:
                 return res.status(400).json({ error: 'Invalid step' });

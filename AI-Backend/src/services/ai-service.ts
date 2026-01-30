@@ -83,7 +83,7 @@ export const getEmojiInstruction = (emojiLevel: string | number = 'moderate'): s
 };
 
 export const getLanguageInstruction = (language: string = 'id'): string => {
-    if (language === 'en') {
+    if (language === 'en' || language === 'English') {
         return `**LANGUAGE: ENGLISH** - Write entirely in English.`;
     }
     return `**LANGUAGE: INDONESIAN** - Write in Bahasa Indonesia, keep English idioms/terms (e.g. "game-changer", "mindset").`;
@@ -94,13 +94,14 @@ export const getLanguageInstruction = (language: string = 'id'): string => {
 // ============================================
 
 // 1. Generate Topics
-export async function generateTopics(input: string, depth: number = 3, model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
-    console.log(`[Groq] Generating topics for: "${input}"`);
+export async function generateTopics(input: string, depth: number = 3, model?: string, grant?: GrantAuth, language: string = 'id'): Promise<AIResponse<string[]>> {
+    console.log(`[Groq] Generating topics for: "${input}" (${language})`);
 
     const prompt = `
     Generate distinct, engaging LinkedIn post topics based on the idea: "${input}".
     
     Research Depth: ${depth} (1=Simple, 5=Deep Dive)
+    ${getLanguageInstruction(language)}
     
     REQUIREMENTS:
     - Generate EXACTLY 10 distinct topics.
@@ -133,7 +134,6 @@ export async function generateTopics(input: string, depth: number = 3, model?: s
             topics = cleanJson.split('\n').filter(l => l.length > 5).slice(0, 10);
         }
 
-        // Ensure we have exactly 10 topics if possible, or at least return what we found
         return { result: topics, signature: 'groq-signature-v1' };
     } catch (error: any) {
         console.error("Groq Topics Error:", error);
@@ -142,8 +142,8 @@ export async function generateTopics(input: string, depth: number = 3, model?: s
 }
 
 // 2. Generate Hooks
-export async function generateHooks(topic: string, intent: string = 'viral', model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
-    console.log(`[Groq] Generating hooks for: "${topic}"`);
+export async function generateHooks(topic: string, intent: string = 'viral', model?: string, grant?: GrantAuth, language: string = 'id'): Promise<AIResponse<string[]>> {
+    console.log(`[Groq] Generating hooks for: "${topic}" (${language})`);
 
     // Get viral context
     const viralContext = getViralContext(3, intent).map((p: any) => `- "${p.hook}"`).join('\n');
@@ -160,6 +160,7 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
     Write 8 distinct, high-engagement "Hooks" (opening lines) for a post about: "${topic}".
     
     INTENT: ${intent.toUpperCase()}
+    ${getLanguageInstruction(language)}
     
     REFERENCE VIRAL HOOKS:
     ${viralContext}
@@ -209,9 +210,10 @@ export async function generateBody(
     intent: string,
     length: string,
     model?: string,
-    grant?: GrantAuth
+    grant?: GrantAuth,
+    language: string = 'id'
 ): Promise<AIResponse<string[]>> {
-    console.log(`[Groq] Generating body for hook: "${hook.substring(0, 30)}..."`);
+    console.log(`[Groq] Generating body for hook: "${hook.substring(0, 30)}..." (${language})`);
 
     // Research Layer (Tavily)
     let researchContext = '';
@@ -242,7 +244,7 @@ export async function generateBody(
     RESEARCH CONTEXT (Integrate if relevant):
     ${researchContext}
     
-    ${getLanguageInstruction('id')}
+    ${getLanguageInstruction(language)}
     ${getToneInstruction(5)}
     
     FORMATTING RULES (STRICT):
@@ -285,12 +287,13 @@ export async function generateBody(
 }
 
 // 4. Generate CTA
-export async function generateCTA(body: string, intent: string, model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
+export async function generateCTA(body: string, intent: string, model?: string, grant?: GrantAuth, language: string = 'id'): Promise<AIResponse<string[]>> {
     const prompt = `
     Generate 4 distinct Call-to-Actions (CTAs) for this LinkedIn post body:
     "${body.substring(0, 300)}..."
     
     Intent: ${intent}
+    ${getLanguageInstruction(language)}
     
     Types: Engagement, Value, Debate, Soft Sell.
     
@@ -325,7 +328,7 @@ export async function generateCTA(body: string, intent: string, model?: string, 
 }
 
 // 5. Polish (Final)
-export async function polishContent(content: string, tone: number = 5, emojiDensity: number = 5): Promise<AIResponse<string>> {
+export async function polishContent(content: string, tone: number = 5, emojiDensity: number = 5, language: string = 'id'): Promise<AIResponse<string>> {
     const prompt = `
     You are an expert Editor. Polish this LinkedIn post.
     
@@ -335,7 +338,7 @@ export async function polishContent(content: string, tone: number = 5, emojiDens
     instructions:
     ${getToneInstruction(tone)}
     ${getEmojiInstruction(emojiDensity)}
-    ${getLanguageInstruction('id')}
+    ${getLanguageInstruction(language)}
     
     Steps:
     1. Fix grammar and flow.
@@ -360,20 +363,20 @@ export async function polishContent(content: string, tone: number = 5, emojiDens
 }
 
 // 6. Tiered Generation Orchestrator (Restored for Payment Compatibility)
-export async function generateTieredContent(tier: number, contentId: string): Promise<any> {
-    console.log(`[Groq] Generating tiered content (Tier ${tier}) for ID: ${contentId}`);
+export async function generateTieredContent(tier: number, contentId: string, language: string = 'id'): Promise<any> {
+    console.log(`[Groq] Generating tiered content (Tier ${tier}) for ID: ${contentId} (${language})`);
 
     // Default context if none provided (since this is triggered by payment)
     const input = "Future of AI";
     const intent = "educational";
 
     try {
-        const topicsRes = await generateTopics(input);
+        const topicsRes = await generateTopics(input, 3, undefined, undefined, language);
         const selectedTopic = topicsRes.result[0];
 
         if (tier === 1) {
-            const hooksRes = await generateHooks(selectedTopic, intent);
-            const bodiesRes = await generateBody(hooksRes.result[0], selectedTopic, intent, "short");
+            const hooksRes = await generateHooks(selectedTopic, intent, undefined, undefined, language);
+            const bodiesRes = await generateBody(hooksRes.result[0], selectedTopic, intent, "short", undefined, undefined, language);
 
             return {
                 tier: 1,
@@ -385,8 +388,8 @@ export async function generateTieredContent(tier: number, contentId: string): Pr
         }
 
         // Tier 2 & 3 Logic (Simplified for Groq)
-        const hooksRes = await generateHooks(selectedTopic, intent);
-        const bodiesRes = await generateBody(hooksRes.result[0], selectedTopic, intent, "long");
+        const hooksRes = await generateHooks(selectedTopic, intent, undefined, undefined, language);
+        const bodiesRes = await generateBody(hooksRes.result[0], selectedTopic, intent, "long", undefined, undefined, language);
 
         let finalResult: any = {
             tier: tier,
@@ -397,8 +400,8 @@ export async function generateTieredContent(tier: number, contentId: string): Pr
         };
 
         if (tier === 3) {
-            const ctasRes = await generateCTA(bodiesRes.result[0], intent);
-            const polishedRes = await polishContent(bodiesRes.result[0], 8, 5);
+            const ctasRes = await generateCTA(bodiesRes.result[0], intent, undefined, undefined, language);
+            const polishedRes = await polishContent(bodiesRes.result[0], 8, 5, language);
             finalResult.ctas = ctasRes.result;
             finalResult.finalPolished = polishedRes.result;
         }
