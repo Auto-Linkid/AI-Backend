@@ -248,7 +248,7 @@ export async function generateBody(
     FORMATTING RULES (STRICT):
     1. **NO huge blocks of text**. Break content into short 1-2 sentence paragraphs.
     2. **Use Bullet Points** (• or -) for lists to make it scannable.
-    3. **Bold key phrases** using markdown (**text**) for emphasis.
+    3. **NO STAR (**)** or **MARKDOWN BOLD**. Do NOT use asterisks. Plain text only.
     4. **White Space**: Double newlines between sections.
     
     TASK: Write 4 distinct versions.
@@ -341,6 +341,7 @@ export async function polishContent(content: string, tone: number = 5, emojiDens
     1. Fix grammar and flow.
     2. Improve readability with line breaks.
     3. Add 3 relevant hashtags at the bottom.
+    4. STRICTLY REMOVE ALL BOLDING (**). Do not use asterisks. Plain text only.
     
     Return ONLY the polished post text, nothing else.
     `;
