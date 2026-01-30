@@ -244,12 +244,17 @@ export async function generateBody(
     
     ${getLanguageInstruction('id')}
     ${getToneInstruction(5)}
-    ${getEmojiInstruction('moderate')}
+    
+    FORMATTING RULES (STRICT):
+    1. **NO huge blocks of text**. Break content into short 1-2 sentence paragraphs.
+    2. **Use Bullet Points** (• or -) for lists to make it scannable.
+    3. **Bold key phrases** using markdown (**text**) for emphasis.
+    4. **White Space**: Double newlines between sections.
     
     Write 4 distinct versions.
     
     Return a STRICT JSON ARRAY of strings.
-    Example: ["Body version 1...", "Body version 2...", "Body version 3...", "Body version 4..."]
+    Example: ["First body variation...", "Second body variation..."]
     
     NO intro. NO explanations.
     `;
