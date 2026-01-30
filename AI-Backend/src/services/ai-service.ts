@@ -424,42 +424,76 @@ export async function generateHooks(topic: string, intent: string = 'viral', mod
             temperature: 0.85,
             max_tokens: 2500,
         });
+        const viralContext = getViralContext(3, intent).map(p => `- "${p.hook}"`).join('\n');
 
-        const content = completion.choices[0]?.message?.content || '[]';
-        const result = cleanAndParseJSON(content);
-        const signature = (completion as any).signature;
+        const prompt = `
+    You are a LinkedIn Viral Content Expert. 
+    Topic: "${topic}"
+    Intent: ${intent.toUpperCase()}
+    
+    Analyze these REAL VIRAL HOOKS from our database:
+    ${viralContext}
+    
+    TASK: Write 8 NEW powerful hooks for the topic above. 
+    Mimic the style, punchiness, and psychological triggers of the examples provided.
+    
+    HOOK RULES:
+    1. **NO Generic Openers** (Avoid: "In today's fast world...")
+    2. **Pattern Interruption** (Start with a number, a bold statement, or a question)
+    3. **Specifics** (Use brackets [Number], [Time], [Result] where users can fill in blanks)
+    
+    OUTPUT FORMAT:
+    - Pure plain text.
+    - Separate each hook with "|||".
+    - NO Numbering. NO Intro.
+    - Example: Hook 1... ||| Hook 2... ||| Hook 3...
+    `;
 
-        return { result, signature };
-    } catch (e: any) {
-        console.error("AI Error (Hooks):", e?.message || e);
+        try {
+            console.log(`[AI Hook] Generating with context length: ${viralContext.length}`);
 
-        // If Eigen Grant fails, fallback to Groq
-        if (grant && !isUsingGroq) {
-            switchToGroq();
-            return generateHooks(topic, intent, model);
+            // Try Eigen AI with Grant first if grant provided
+            if (grant) {
+                const response = await callEigenGrantAPI(
+                    [{ role: 'user', content: prompt }],
+                    resolveModelId(model),
+                    grant
+                );
+                const content = response.choices[0]?.message?.content || '';
+                const result = cleanAndParseList(content);
+                return { result, signature: response.signature };
+            }
+
+            const completion = await openai.chat.completions.create({
+                messages: [{ role: 'user', content: prompt }],
+                model: resolveModelId(model),
+                temperature: 0.9,
+                max_tokens: 2500,
+            });
+
+            const content = completion.choices[0]?.message?.content || '';
+            const result = cleanAndParseList(content);
+
+            return { result, signature: (completion as any).signature };
+        } catch (e: any) {
+            console.error("AI Error (Hooks):", e?.message || e);
+            if (grant && !isUsingGroq) { switchToGroq(); return generateHooks(topic, intent, model); }
+            if (!isUsingGroq && e?.status === 401) { switchToGroq(); return generateHooks(topic, intent, model); }
+            return { result: [`${topic} is important because...`] };
         }
-
-        // If authentication error and not using Groq yet, switch and retry
-        if (!isUsingGroq && e?.status === 401) {
-            switchToGroq();
-            return generateHooks(topic, intent, model);
-        }
-
-        return { result: [`${topic} is important because...`] };
     }
-}
 
 // 3. Generate Body (Array of variations) - THE ROBUST VERSION
 export async function generateBody(hook: string, context: string, intent: string, length: string, model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
 
-    // A. Research Layer (Content)
-    let researchContext = '';
-    try {
-        const search = await tvly.search(context || hook, { maxResults: 2 });
-        researchContext = search.results.map((r: any) => `- ${r.title}: ${r.content}`).join('\n');
-    } catch (e) { console.log('Research failed', e); }
+        // A. Research Layer (Content)
+        let researchContext = '';
+        try {
+            const search = await tvly.search(context || hook, { maxResults: 2 });
+            researchContext = search.results.map((r: any) => `- ${r.title}: ${r.content}`).join('\n');
+        } catch (e) { console.log('Research failed', e); }
 
-    const prompt = `
+        const prompt = `
     You are a LinkedIn Ghostwriter. Expert at viral content.
     
     Topic: "${context}"
@@ -478,60 +512,59 @@ export async function generateBody(hook: string, context: string, intent: string
     Variation 1 text... ||| Variation 2 text... ||| Variation 3 text... ||| Variation 4 text...
     `;
 
-    try {
-        const completion = await openai.chat.completions.create({
-            messages: [{ role: 'user', content: prompt }],
-            model: resolveModelId(model),
-            temperature: 0.85,
-            max_tokens: 3500,
-        });
+        try {
+            const completion = await openai.chat.completions.create({
+                messages: [{ role: 'user', content: prompt }],
+                model: resolveModelId(model),
+                temperature: 0.85,
+                max_tokens: 3500,
+            });
 
-        const content = completion.choices[0]?.message?.content || '';
+            const content = completion.choices[0]?.message?.content || '';
 
-        let bodies = content.split('|||').map(b => b.trim()).filter(b => b.length > 10);
-        if (bodies.length === 0) bodies = [content];
+            let bodies = content.split('|||').map(b => b.trim()).filter(b => b.length > 10);
+            if (bodies.length === 0) bodies = [content];
 
-        const signature = "0xSIMULATED_DEMO_SIGNATURE_BY_GROQ";
+            const signature = "0xSIMULATED_DEMO_SIGNATURE_BY_GROQ";
 
-        return { result: bodies, signature };
-    } catch (error: any) {
-        console.error('[AI Body] Error:', error?.message || error);
-        return { result: ["Error generating body. Please try again."] };
+            return { result: bodies, signature };
+        } catch (error: any) {
+            console.error('[AI Body] Error:', error?.message || error);
+            return { result: ["Error generating body. Please try again."] };
+        }
     }
-}
 
-// 4. Generate CTA (Call to Action)
-export async function generateCTA(body: string, intent: string, model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
-    const prompt = `
-    You are a LinkedIn engagement expert. Generate 4 compelling Call-To-Actions (CTAs) for a LinkedIn post.
+    // 4. Generate CTA (Enriched with Viral Data)
+    export async function generateCTA(body: string, intent: string, model?: string, grant?: GrantAuth): Promise<AIResponse<string[]>> {
+    You are a LinkedIn engagement expert.Generate 4 compelling Call - To - Actions(CTAs) for a LinkedIn post.
     
     Post Body Context: "${body.substring(0, 150)}..."
-    Intent: ${intent.toUpperCase()}
+        Intent: ${ intent.toUpperCase() }
     
     CTA RULES:
-    1. **Keep it SHORT** - Max 2 sentences
-    2. **Engage, Don't Sell** - Ask questions, invite discussion
-    3. **Match the Tone** - Align with the post's vibe
-    4. **Natural Flow** - Should feel like a conversation closer
+        1. ** Keep it SHORT ** - Max 2 sentences
+        2. ** Engage, Don't Sell** - Ask questions, invite discussion
+        3. ** Match the Tone ** - Align with the post's vibe
+        4. ** Natural Flow ** - Should feel like a conversation closer
     
     CTA TYPES TO VARY:
-    - Question: "Setuju? Atau ada perspektif lain?"
-    - Invitation: "Share pengalaman kalian di comments 👇"
-    - Reflection: "Bagaimana menurut kalian?"
-    - Community: "Tag someone yang perlu baca ini!"
-    
-    LANGUAGE:
-    - Use Bahasa Indonesia conversationally
-    - Keep emoji usage light (1-2 max per CTA)
-    - Authentic and warm tone
+        - Question: "Setuju? Atau ada perspektif lain?"
+            - Invitation: "Share pengalaman kalian di comments 👇"
+                - Reflection: "Bagaimana menurut kalian?"
+                    - Community: "Tag someone yang perlu baca ini!"
+
+        LANGUAGE:
+        - Use Bahasa Indonesia conversationally
+            - Keep emoji usage light(1 - 2 max per CTA)
+                - Authentic and warm tone
     
     OUTPUT FORMAT:
-    - STRICT JSON ARRAY ONLY.
+        - STRICT JSON ARRAY ONLY.
     - DO NOT include "Here are...", "Below are...", or any intro text.
     - Start immediately with [.
     - End immediately with ].
-    
-    Example: ["CTA 1", "CTA 2", "CTA 3", "CTA 4"]
+
+        Example: ["CTA 1", "CTA 2", "CTA 3", "CTA 4"]
     `;
 
     try {
@@ -587,16 +620,16 @@ export async function polishContent(content: string, tone: number, emojiDensity:
     const prompt = `Polish this LinkedIn post following this EXACT structure for consistency:
 
 Original post:
-"${content}"
+        "${content}"
 
-${toneInstruction}
-${emojiInstruction}
+${ toneInstruction }
+${ emojiInstruction }
 
-FORMATTING RULES (CRITICAL):
-1. **Line Breaks**: Add proper spacing between paragraphs (double newline).
-2. **Visual Hierarchy**: Use CAPS for 1-2 key phrases.
-3. **Readability**: Keep sentences short and punchy.
-4. **Hashtags**: Add max 5 hashtags at the end.
+FORMATTING RULES(CRITICAL):
+        1. ** Line Breaks **: Add proper spacing between paragraphs(double newline).
+2. ** Visual Hierarchy **: Use CAPS for 1 - 2 key phrases.
+3. ** Readability **: Keep sentences short and punchy.
+4. ** Hashtags **: Add max 5 hashtags at the end.
 
 Return ONLY the polished post text, nothing else.`;
 
@@ -624,7 +657,7 @@ Return ONLY the polished post text, nothing else.`;
 
 // 6. Tiered Generation Orchestrator
 export async function generateTieredContent(tier: number, contentId: string): Promise<any> {
-    console.log(`[AI] Generating content for Tier ${tier} (ID: ${contentId})`);
+    console.log(`[AI] Generating content for Tier ${ tier }(ID: ${ contentId })`);
 
     // Default context
     const input = "AI in Marketing";
