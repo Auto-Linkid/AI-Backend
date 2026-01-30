@@ -1,15 +1,21 @@
 import { Router, Request, Response } from 'express';
 import { ethers } from 'ethers';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables robustly
+const envPath = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: envPath });
 
 const router = Router();
 
 // Environment variables
-const RPC_URL = process.env.BASE_SEPOLIA_RPC_URL;
-const PRIVATE_KEY = process.env.FACILITATOR_PRIVATE_KEY;
-const CONTRACT_ADDRESS = process.env.PAYMENT_CONTRACT_ADDRESS;
+const RPC_URL = process.env.RPC_URL || process.env.BASE_SEPOLIA_RPC_URL;
+const PRIVATE_KEY = process.env.PRIVATE_KEY || process.env.FACILITATOR_PRIVATE_KEY;
+const CONTRACT_ADDRESS = process.env.PAYMENT_CONTRACT_ADDRESS; // Keep original just in case, though mostly using USDC now
 
-if (!RPC_URL || !PRIVATE_KEY || !CONTRACT_ADDRESS) {
-    console.warn("⚠️  Missing Payment Config in .env");
+if (!RPC_URL || !PRIVATE_KEY) {
+    console.warn("⚠️  Missing Payment Config in .env (RPC_URL or PRIVATE_KEY)");
 }
 
 // Contract ABI (Minimal)
