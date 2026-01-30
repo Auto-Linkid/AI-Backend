@@ -251,12 +251,12 @@ export async function generateBody(
     3. **Bold key phrases** using markdown (**text**) for emphasis.
     4. **White Space**: Double newlines between sections.
     
-    Write 4 distinct versions.
+    TASK: Write 4 distinct versions.
     
-    Return a STRICT JSON ARRAY of strings.
-    Example: ["First body variation...", "Second body variation..."]
-    
-    NO intro. NO explanations.
+    OUTPUT FORMAT:
+    - Pure plain text (NO JSON).
+    - MENDATORY: Separate distinct versions with "|||".
+    - Example: Body 1 text... ||| Body 2 text... ||| Body 3 text...
     `;
 
     try {
@@ -266,23 +266,16 @@ export async function generateBody(
             temperature: 0.7,
         });
 
-        const content = completion.choices[0]?.message?.content || '[]';
+        const content = completion.choices[0]?.message?.content || '';
         console.log('[Groq] Raw Body:', content.substring(0, 100));
 
-        const cleanJson = content.replace(/```json|```/g, '').trim();
-        let bodies: string[] = [];
+        let bodies = content.split('|||').map(b => b.trim()).filter(b => b.length > 20);
 
-        try {
-            const parsed = JSON.parse(cleanJson);
-            if (Array.isArray(parsed)) {
-                bodies = parsed.map(p => typeof p === 'string' ? p : p.content || JSON.stringify(p));
-            } else if (typeof parsed === 'object') {
-                bodies = Object.values(parsed).map((v: any) => typeof v === 'string' ? v : v.content);
-            }
-        } catch {
-            bodies = content.split(/\n\n+/).filter(b => b.length > 50);
-            if (bodies.length === 0) bodies = [content];
+        // Fallback: If split failed (AI forgot delimiter), try newline split if it looks like independent blocks
+        if (bodies.length < 2) {
+            bodies = content.split(/\n\n\n+/).filter(b => b.length > 50);
         }
+        if (bodies.length === 0) bodies = [content];
 
         return { result: bodies.slice(0, 4), signature: 'groq-signature-v1' };
     } catch (error: any) {
