@@ -8,7 +8,7 @@ const router = Router();
 router.post('/api/generate', async (req: Request, res: Response) => {
     try {
         const { step, ...params } = req.body;
-        console.log(`[API] Generate request - step: ${step}, model: ${params.model}`);
+        console.log(`[API] Generate request - step: ${step}, model: ${params.model}, language: ${params.language}`);
 
         // Extract grant auth params (optional)
         const grant = req.body.grantMessage ? {
